@@ -304,6 +304,10 @@ function searchConstituency() {
     unsubscribeSnapshot();
     unsubscribeSnapshot = null;
   }
+  if (unsubscribePredictions) {
+    unsubscribePredictions();
+    unsubscribePredictions = null;
+  }
 
   // Attach real-time listener
   unsubscribeSnapshot = candidatesRef(docId)
@@ -331,7 +335,7 @@ function renderCandidates(snapshot) {
 
   if (snapshot.empty) {
     renderEmpty();
-    updateSummaryBar(0, 0);
+    updateSummaryBar(0, 0, "—");
     return;
   }
 
@@ -375,7 +379,15 @@ function renderCandidates(snapshot) {
     tbody.appendChild(tr);
   });
 
-  updateSummaryBar(candidates.length, totalVotes);
+  currentCandidatesForPrediction = candidates;
+  document.getElementById("predict-btn-wrap").style.display = "block";
+
+  const winnerName = candidates.length > 0 ? candidates[0].name : "—";
+  updateSummaryBar(candidates.length, totalVotes, winnerName);
+
+  if (currentDocId) {
+    listenToPredictions(currentDocId, candidates);
+  }
 }
 
 function renderEmpty() {
@@ -395,12 +407,163 @@ function setLoadingRow(show) {
   }
 }
 
-function updateSummaryBar(candidateCount, totalVotes) {
+function updateSummaryBar(candidateCount, totalVotes, winnerName) {
   const bar = document.getElementById("summary-bar");
   bar.innerHTML = `
     <div class="summary-item">Candidates: <span>${candidateCount}</span></div>
-    <div class="summary-item">Total Votes Cast: <span>${totalVotes.toLocaleString()}</span></div>
+    <div class="summary-item">🏆 Winning: <span>${escapeHtml(winnerName || "—")}</span></div>
   `;
+}
+
+// ──────────────────────────────────────────────────────────────
+//  VOTE PREDICTION SYSTEM
+// ──────────────────────────────────────────────────────────────
+let currentCandidatesForPrediction = [];
+let unsubscribePredictions = null;
+
+/** Returns a CollectionReference to the predictions subcollection */
+function predictionsRef(docId) {
+  return db.collection("constituencies").doc(docId).collection("predictions");
+}
+
+function openPredictionModal() {
+  if (!IS_CONFIGURED) {
+    showToast("Firebase is not configured.", "error");
+    return;
+  }
+  if (currentCandidatesForPrediction.length === 0) {
+    showToast("No candidates to predict for.", "info");
+    return;
+  }
+
+  const form = document.getElementById("prediction-candidates-form");
+  form.innerHTML = "";
+  currentCandidatesForPrediction.forEach(c => {
+    const row = document.createElement("div");
+    row.className = "prediction-candidate-row";
+    row.innerHTML = `
+      <div class="prediction-candidate-label">
+        <strong>${escapeHtml(c.name || "—")}</strong>
+        <small>${escapeHtml(c.party || "—")}</small>
+      </div>
+      <input type="number" min="0" data-cid="${escapeHtml(c.id)}" placeholder="0" />
+    `;
+    form.appendChild(row);
+  });
+
+  document.getElementById("pred-name").value = "";
+  document.getElementById("pred-contact").value = "";
+  document.getElementById("prediction-modal-overlay").classList.add("open");
+}
+
+function closePredictionModal() {
+  document.getElementById("prediction-modal-overlay").classList.remove("open");
+}
+
+function handleOverlayClick(e) {
+  if (e.target === document.getElementById("prediction-modal-overlay")) {
+    closePredictionModal();
+  }
+}
+
+async function submitPrediction() {
+  const DEADLINE = new Date("2026-03-05T23:59:59");
+  if (new Date() > DEADLINE) {
+    showToast("Prediction period has ended (deadline was March 5, 2026)", "error");
+    return;
+  }
+
+  const name    = document.getElementById("pred-name").value.trim();
+  const contact = document.getElementById("pred-contact").value.trim();
+
+  if (!name || !contact) {
+    showToast("Please enter your name and contact number.", "info");
+    return;
+  }
+
+  const inputs = document.querySelectorAll("#prediction-candidates-form input[data-cid]");
+  const predictions = {};
+  let allFilled = true;
+
+  inputs.forEach(input => {
+    const val = input.value.trim();
+    if (val === "" || isNaN(parseInt(val, 10)) || parseInt(val, 10) < 0) {
+      allFilled = false;
+    } else {
+      predictions[input.dataset.cid] = parseInt(val, 10);
+    }
+  });
+
+  if (!allFilled) {
+    showToast("Please enter predicted votes for all candidates.", "info");
+    return;
+  }
+
+  if (!currentDocId) {
+    showToast("No constituency selected.", "error");
+    return;
+  }
+
+  try {
+    await predictionsRef(currentDocId).add({
+      name,
+      contact,
+      predictions,
+      submittedAt: firebase.firestore.FieldValue.serverTimestamp()
+    });
+    closePredictionModal();
+    showToast("Your prediction has been submitted!", "success");
+  } catch (err) {
+    console.error("Prediction error:", err);
+    showToast("Failed to submit prediction: " + err.message, "error");
+  }
+}
+
+function updatePredictionWinners(predictionDocs, candidates) {
+  const section = document.getElementById("prediction-winners-section");
+  const list    = document.getElementById("prediction-winners-list");
+  section.style.display = "block";
+
+  if (!predictionDocs || predictionDocs.length === 0 || candidates.length === 0) {
+    list.innerHTML = '<p class="prediction-no-match">No exact prediction matches yet.</p>';
+    return;
+  }
+
+  const actualVotes = {};
+  candidates.forEach(c => { actualVotes[c.id] = c.votes || 0; });
+
+  const winners = predictionDocs.filter(pred => {
+    const predVotes = pred.predictions || {};
+    return candidates.every(c => {
+      return Object.prototype.hasOwnProperty.call(predVotes, c.id) &&
+             predVotes[c.id] === actualVotes[c.id];
+    });
+  });
+
+  if (winners.length === 0) {
+    list.innerHTML = '<p class="prediction-no-match">No exact prediction matches yet.</p>';
+  } else {
+    list.innerHTML = winners.map(w =>
+      `<div class="prediction-winner-item">🎉 Exact match! <strong>${escapeHtml(w.name)}</strong> (${escapeHtml(w.contact)}) predicted all votes correctly!</div>`
+    ).join("");
+  }
+}
+
+function listenToPredictions(docId, candidates) {
+  if (unsubscribePredictions) {
+    unsubscribePredictions();
+    unsubscribePredictions = null;
+  }
+  unsubscribePredictions = predictionsRef(docId).onSnapshot(
+    snapshot => {
+      const docs = [];
+      snapshot.forEach(doc => docs.push({ id: doc.id, ...doc.data() }));
+      // Use the global so we always compare against the latest vote counts,
+      // not a stale snapshot from when this listener was established.
+      updatePredictionWinners(docs, currentCandidatesForPrediction);
+    },
+    err => { console.error("Predictions snapshot error:", err); }
+  );
 }
 
 // ──────────────────────────────────────────────────────────────
@@ -559,6 +722,95 @@ window.initializeSampleData = async function () {
 };
 
 // ──────────────────────────────────────────────────────────────
+//  ROTATING AD BANNER
+// ──────────────────────────────────────────────────────────────
+const AD_ROTATION_INTERVAL_MS = 2 * 60 * 1000; // 2 minutes
+
+let adList          = [];
+let currentAdIndex  = 0;
+let adRotationTimer = null;
+let adBannerClosed  = false;
+
+function loadAds() {
+  if (!IS_CONFIGURED) return;
+
+  db.collection("ads").where("active", "==", true).orderBy("createdAt")
+    .onSnapshot(
+      snapshot => {
+        adList = [];
+        snapshot.forEach(doc => adList.push({ id: doc.id, ...doc.data() }));
+
+        if (adList.length > 0 && !adBannerClosed) {
+          currentAdIndex = 0;
+          displayAd(currentAdIndex);
+
+          if (adRotationTimer) clearInterval(adRotationTimer);
+          adRotationTimer = setInterval(() => {
+            if (!adBannerClosed && adList.length > 1) {
+              currentAdIndex = (currentAdIndex + 1) % adList.length;
+              rotateAd(currentAdIndex);
+            }
+          }, AD_ROTATION_INTERVAL_MS);
+        } else if (adList.length === 0) {
+          document.getElementById("ad-banner").style.display = "none";
+        }
+      },
+      err => { console.error("Ads snapshot error:", err); }
+    );
+}
+
+function displayAd(index) {
+  const ad = adList[index];
+  if (!ad) return;
+  document.getElementById("ad-link").href  = ad.linkUrl  || "#";
+  document.getElementById("ad-image").src  = ad.imageUrl || "";
+  document.getElementById("ad-image").alt  = ad.altText  || "Advertisement";
+  document.getElementById("ad-banner").style.display = "block";
+}
+
+function rotateAd(index) {
+  const img = document.getElementById("ad-image");
+  img.classList.add("fade-out");
+  setTimeout(() => {
+    displayAd(index);
+    img.classList.remove("fade-out");
+  }, 500);
+}
+
+function closeAdBanner() {
+  adBannerClosed = true;
+  document.getElementById("ad-banner").style.display = "none";
+  if (adRotationTimer) {
+    clearInterval(adRotationTimer);
+    adRotationTimer = null;
+  }
+}
+
+/** Console helper: addAd("https://example.com/banner.jpg", "https://example.com", "Visit our store!") */
+window.addAd = async function(imageUrl, linkUrl, altText) {
+  if (!IS_CONFIGURED) { console.error("❌ Firebase is not configured."); return; }
+  try {
+    const docRef = await db.collection("ads").add({
+      imageUrl,
+      linkUrl,
+      altText:   altText || "",
+      active:    true,
+      createdAt: firebase.firestore.FieldValue.serverTimestamp()
+    });
+    console.log("✅ Ad added with ID:", docRef.id);
+  } catch (err) { console.error("Failed to add ad:", err); }
+};
+
+/** Console helper: removeAd("adDocId") */
+window.removeAd = async function(adId) {
+  if (!IS_CONFIGURED) { console.error("❌ Firebase is not configured."); return; }
+  try {
+    await db.collection("ads").doc(adId).delete();
+    console.log("✅ Ad removed:", adId);
+  } catch (err) { console.error("Failed to remove ad:", err); }
+};
+
+// ──────────────────────────────────────────────────────────────
 //  ADMIN SECTION (commented out by default)
 //  Uncomment the block below to enable admin-only write access.
 //  Requires Firebase Authentication to be set up.
@@ -607,6 +859,7 @@ firebase.auth().onAuthStateChanged(user => {
 document.addEventListener("DOMContentLoaded", () => {
   populateProvinces();
   updateConnectionStatus();
+  loadAds();
 
   document.getElementById("province-select")
     .addEventListener("change", onProvinceChange);

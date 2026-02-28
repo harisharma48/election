@@ -361,6 +361,149 @@
       font-size: 0.88rem;
     }
     .summary-item span { font-weight: 700; color: #1a237e; }
+
+    /* ── Prediction Modal ─────────────────────────────────────── */
+    #prediction-modal-overlay {
+      display: none;
+      position: fixed;
+      inset: 0;
+      background: rgba(0,0,0,.5);
+      z-index: 1000;
+      align-items: center;
+      justify-content: center;
+      padding: 16px;
+    }
+    #prediction-modal-overlay.open { display: flex; }
+    #prediction-modal {
+      background: #fff;
+      border-radius: 12px;
+      padding: 28px 32px;
+      width: 100%;
+      max-width: 520px;
+      max-height: 90vh;
+      overflow-y: auto;
+      box-shadow: 0 16px 48px rgba(0,0,0,.3);
+    }
+    #prediction-modal h3 {
+      font-size: 1.1rem;
+      color: #1a237e;
+      margin-bottom: 6px;
+    }
+    .prediction-deadline {
+      font-size: 0.82rem;
+      color: #888;
+      margin-bottom: 20px;
+    }
+    .prediction-candidate-row {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      margin-bottom: 12px;
+    }
+    .prediction-candidate-label {
+      flex: 1;
+      font-size: 0.9rem;
+      color: #333;
+    }
+    .prediction-candidate-label small {
+      display: block;
+      color: #888;
+      font-size: 0.78rem;
+    }
+    .prediction-candidate-row input {
+      width: 110px;
+      padding: 8px 10px;
+      border: 1.5px solid #c5cae9;
+      border-radius: 8px;
+      font-size: 0.9rem;
+      text-align: right;
+    }
+    .prediction-candidate-row input:focus {
+      outline: none;
+      border-color: #3949ab;
+      box-shadow: 0 0 0 3px rgba(57,73,171,.15);
+    }
+    .prediction-user-fields {
+      margin-top: 20px;
+      border-top: 1px solid #e8eaf6;
+      padding-top: 20px;
+      display: flex;
+      flex-direction: column;
+      gap: 12px;
+    }
+    .modal-actions {
+      display: flex;
+      gap: 12px;
+      margin-top: 20px;
+      justify-content: flex-end;
+    }
+
+    /* ── Prediction Winners ───────────────────────────────────── */
+    #prediction-winners-section {
+      margin-top: 24px;
+      padding-top: 20px;
+      border-top: 2px solid #e8eaf6;
+    }
+    #prediction-winners-section h3 {
+      font-size: 1rem;
+      color: #1a237e;
+      margin-bottom: 12px;
+    }
+    .prediction-winner-item {
+      background: #e8f5e9;
+      border: 1px solid #a5d6a7;
+      border-radius: 8px;
+      padding: 10px 16px;
+      margin-bottom: 8px;
+      font-size: 0.9rem;
+      color: #2e7d32;
+    }
+    .prediction-no-match {
+      color: #888;
+      font-size: 0.9rem;
+      font-style: italic;
+    }
+
+    /* ── Ad Banner ────────────────────────────────────────────── */
+    #ad-banner {
+      display: none;
+      max-width: 960px;
+      margin: 0 auto 24px;
+      padding: 0 16px;
+    }
+    .ad-banner-inner {
+      position: relative;
+      border-radius: 12px;
+      overflow: hidden;
+      box-shadow: 0 4px 20px rgba(0,0,0,.2);
+      border: 1px solid rgba(255,255,255,.15);
+    }
+    .ad-banner-inner a img {
+      width: 100%;
+      height: auto;
+      display: block;
+      transition: opacity .5s ease;
+    }
+    .ad-close-btn {
+      position: absolute;
+      top: 8px;
+      right: 8px;
+      width: 28px;
+      height: 28px;
+      border-radius: 50%;
+      background: rgba(0,0,0,.5);
+      color: #fff;
+      border: none;
+      font-size: 0.9rem;
+      cursor: pointer;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      z-index: 1;
+      line-height: 1;
+    }
+    .ad-close-btn:hover { background: rgba(0,0,0,.75); }
+    .ad-banner-inner img.fade-out { opacity: 0; }
   </style>
 </head>
 <body>
@@ -444,6 +587,17 @@
         </tbody>
       </table>
     </div>
+
+    <!-- Predict Votes button -->
+    <div id="predict-btn-wrap" style="margin-top:16px;display:none;">
+      <button class="btn btn-primary" onclick="openPredictionModal()">🔮 Predict Votes</button>
+    </div>
+
+    <!-- Prediction Winners -->
+    <div id="prediction-winners-section" style="display:none;">
+      <h3>🎯 Prediction Winners</h3>
+      <div id="prediction-winners-list"></div>
+    </div>
   </div>
 
   <!-- Add candidate card -->
@@ -468,8 +622,41 @@
 
 </div><!-- /.container -->
 
+<!-- Ad Banner -->
+<div id="ad-banner">
+  <div class="ad-banner-inner">
+    <button class="ad-close-btn" onclick="closeAdBanner()" title="Close">✕</button>
+    <a id="ad-link" href="#" target="_blank" rel="noopener noreferrer">
+      <img id="ad-image" src="" alt="Advertisement" />
+    </a>
+  </div>
+</div>
+
 <!-- Toast -->
 <div id="toast"></div>
+
+<!-- Prediction Modal -->
+<div id="prediction-modal-overlay" onclick="handleOverlayClick(event)">
+  <div id="prediction-modal">
+    <h3>🔮 Predict Votes</h3>
+    <p class="prediction-deadline">Predictions close on <strong>March 5, 2026</strong></p>
+    <div id="prediction-candidates-form"></div>
+    <div class="prediction-user-fields">
+      <div class="form-group">
+        <label for="pred-name">Your Name</label>
+        <input type="text" id="pred-name" placeholder="Enter your name" />
+      </div>
+      <div class="form-group">
+        <label for="pred-contact">Your Phone/Contact Number</label>
+        <input type="text" id="pred-contact" placeholder="Enter your phone number" />
+      </div>
+    </div>
+    <div class="modal-actions">
+      <button class="btn" onclick="closePredictionModal()" style="background:#e8eaf6;color:#555;">Cancel</button>
+      <button class="btn btn-primary" onclick="submitPrediction()">Submit Prediction</button>
+    </div>
+  </div>
+</div>
 
 <script src="script.js"></script>
 </body>
