@@ -125,6 +125,7 @@ const IS_CONFIGURED =
 
 let db = null;
 let unsubscribeSnapshot = null;   // active real-time listener
+let currentCandidates = [];       // latest candidates for the active constituency
 
 if (IS_CONFIGURED) {
   try {
@@ -308,6 +309,11 @@ function searchConstituency() {
     unsubscribePredictions();
     unsubscribePredictions = null;
   }
+  if (unsubscribePartyPolls) {
+    unsubscribePartyPolls();
+    unsubscribePartyPolls = null;
+  }
+  document.getElementById("party-poll-results").style.display = "none";
 
   // Attach real-time listener
   unsubscribeSnapshot = candidatesRef(docId)
@@ -379,14 +385,16 @@ function renderCandidates(snapshot) {
     tbody.appendChild(tr);
   });
 
+  currentCandidates = candidates;
   currentCandidatesForPrediction = candidates;
-  document.getElementById("predict-btn-wrap").style.display = "block";
+  document.getElementById("predict-btn-wrap").style.display = "flex";
 
   const winnerName = candidates.length > 0 ? candidates[0].name : "—";
   updateSummaryBar(candidates.length, totalVotes, winnerName);
 
   if (currentDocId) {
     listenToPredictions(currentDocId, candidates);
+    listenToPartyPolls(currentDocId);
   }
 }
 
@@ -567,6 +575,145 @@ function listenToPredictions(docId, candidates) {
 }
 
 // ──────────────────────────────────────────────────────────────
+//  PARTY WIN POLL
+// ──────────────────────────────────────────────────────────────
+let unsubscribePartyPolls = null;
+
+function partyPollsRef(docId) {
+  return db.collection("constituencies").doc(docId).collection("partyPolls");
+}
+
+function openPartyPollModal() {
+  if (!IS_CONFIGURED) {
+    showToast("Firebase is not configured.", "error");
+    return;
+  }
+  if (currentCandidates.length === 0) {
+    showToast("No candidates to poll for.", "info");
+    return;
+  }
+
+  // Build unique party list from current candidates
+  const parties = [...new Set(currentCandidates.map(c => c.party).filter(Boolean))];
+  const form = document.getElementById("party-poll-options");
+  form.innerHTML = "";
+  parties.forEach((party, idx) => {
+    const row = document.createElement("div");
+    row.className = "party-poll-option";
+    row.innerHTML = `
+      <label>
+        <input type="radio" name="party-poll-radio" value="${escapeHtml(party)}" ${idx === 0 ? "checked" : ""} />
+        ${escapeHtml(party)}
+      </label>
+    `;
+    form.appendChild(row);
+  });
+
+  document.getElementById("party-poll-name").value = "";
+  document.getElementById("party-poll-modal-overlay").classList.add("open");
+}
+
+function closePartyPollModal() {
+  document.getElementById("party-poll-modal-overlay").classList.remove("open");
+}
+
+function handlePartyPollOverlayClick(e) {
+  if (e.target === document.getElementById("party-poll-modal-overlay")) {
+    closePartyPollModal();
+  }
+}
+
+async function submitPartyPoll() {
+  const DEADLINE = new Date("2026-03-05T23:59:59");
+  if (new Date() > DEADLINE) {
+    showToast("Party poll has ended (deadline was March 5, 2026)", "error");
+    return;
+  }
+
+  const name = document.getElementById("party-poll-name").value.trim();
+  if (!name) {
+    showToast("Please enter your name.", "info");
+    return;
+  }
+
+  const selected = document.querySelector('input[name="party-poll-radio"]:checked');
+  if (!selected) {
+    showToast("Please select a party.", "info");
+    return;
+  }
+
+  if (!currentDocId) {
+    showToast("No constituency selected.", "error");
+    return;
+  }
+
+  try {
+    await partyPollsRef(currentDocId).add({
+      name,
+      predictedParty: selected.value,
+      submittedAt: firebase.firestore.FieldValue.serverTimestamp()
+    });
+    closePartyPollModal();
+    showToast("Your party prediction has been submitted!", "success");
+  } catch (err) {
+    console.error("Party poll error:", err);
+    showToast("Failed to submit party poll: " + err.message, "error");
+  }
+}
+
+function renderPartyPollResults(pollDocs) {
+  const section = document.getElementById("party-poll-results");
+  if (!pollDocs || pollDocs.length === 0) {
+    section.style.display = "none";
+    return;
+  }
+
+  // Count votes per party
+  const counts = {};
+  pollDocs.forEach(doc => {
+    const p = doc.predictedParty || "Unknown";
+    counts[p] = (counts[p] || 0) + 1;
+  });
+
+  const total = pollDocs.length;
+  const sorted = Object.entries(counts).sort((a, b) => b[1] - a[1]);
+
+  const barsHtml = sorted.map(([party, count]) => {
+    const pct = ((count / total) * 100).toFixed(1);
+    return `
+      <div class="party-poll-bar-row">
+        <div class="party-poll-bar-label">${escapeHtml(party)}</div>
+        <div class="party-poll-bar-wrap">
+          <div class="party-poll-bar" style="width:${pct}%"></div>
+        </div>
+        <div class="party-poll-bar-pct">${pct}% <span>(${count})</span></div>
+      </div>
+    `;
+  }).join("");
+
+  section.innerHTML = `
+    <h3>📊 Party Poll Results <small>(${total} vote${total !== 1 ? "s" : ""})</small></h3>
+    ${barsHtml}
+  `;
+  section.style.display = "block";
+}
+
+function listenToPartyPolls(docId) {
+  if (unsubscribePartyPolls) {
+    unsubscribePartyPolls();
+    unsubscribePartyPolls = null;
+  }
+  unsubscribePartyPolls = partyPollsRef(docId).onSnapshot(
+    snapshot => {
+      const docs = [];
+      snapshot.forEach(doc => docs.push({ id: doc.id, ...doc.data() }));
+      renderPartyPollResults(docs);
+    },
+    err => { console.error("Party poll snapshot error:", err); }
+  );
+}
+
+// ──────────────────────────────────────────────────────────────
 //  UPDATE VOTES
 // ──────────────────────────────────────────────────────────────
 async function promptUpdateVotes(candidateId, name, currentVotes) {
@@ -722,14 +869,12 @@ window.initializeSampleData = async function () {
 };
 
 // ──────────────────────────────────────────────────────────────
-//  ROTATING AD BANNER
+//  4-BOX GRID AD SECTION
 // ──────────────────────────────────────────────────────────────
-const AD_ROTATION_INTERVAL_MS = 2 * 60 * 1000; // 2 minutes
+const AD_REFRESH_INTERVAL_MS = 2 * 60 * 1000; // 2 minutes
 
-let adList          = [];
-let currentAdIndex  = 0;
-let adRotationTimer = null;
-let adBannerClosed  = false;
+let adGridClosed    = false;
+let adRefreshTimer  = null;
 
 function loadAds() {
   if (!IS_CONFIGURED) return;
@@ -737,63 +882,85 @@ function loadAds() {
   db.collection("ads").where("active", "==", true).orderBy("createdAt")
     .onSnapshot(
       snapshot => {
-        adList = [];
-        snapshot.forEach(doc => adList.push({ id: doc.id, ...doc.data() }));
-
-        if (adList.length > 0 && !adBannerClosed) {
-          currentAdIndex = 0;
-          displayAd(currentAdIndex);
-
-          if (adRotationTimer) clearInterval(adRotationTimer);
-          adRotationTimer = setInterval(() => {
-            if (!adBannerClosed && adList.length > 1) {
-              currentAdIndex = (currentAdIndex + 1) % adList.length;
-              rotateAd(currentAdIndex);
-            }
-          }, AD_ROTATION_INTERVAL_MS);
-        } else if (adList.length === 0) {
-          document.getElementById("ad-banner").style.display = "none";
-        }
+        const ads = [];
+        snapshot.forEach(doc => ads.push({ id: doc.id, ...doc.data() }));
+        displayAdGrid(ads);
       },
       err => { console.error("Ads snapshot error:", err); }
     );
+
+  // Auto-refresh every 2 minutes (snapshot already handles updates, but keep timer for indicator)
+  if (adRefreshTimer) clearInterval(adRefreshTimer);
+  adRefreshTimer = setInterval(() => {
+    const indicator = document.getElementById("ad-refresh-indicator");
+    if (indicator) {
+      indicator.style.opacity = "1";
+      setTimeout(() => { indicator.style.opacity = "0"; }, 1000);
+    }
+  }, AD_REFRESH_INTERVAL_MS);
 }
 
-function displayAd(index) {
-  const ad = adList[index];
-  if (!ad) return;
-  document.getElementById("ad-link").href  = ad.linkUrl  || "#";
-  document.getElementById("ad-image").src  = ad.imageUrl || "";
-  document.getElementById("ad-image").alt  = ad.altText  || "Advertisement";
+function displayAdGrid(ads) {
+  if (adGridClosed) return;
+
+  // Map ads by position (1-4)
+  const byPosition = {};
+  ads.forEach(ad => {
+    const pos = ad.position;
+    if (pos >= 1 && pos <= 4) {
+      byPosition[pos] = ad;
+    }
+  });
+
+  const hasAnyAd = Object.keys(byPosition).length > 0;
+  const grid = document.getElementById("ad-grid");
+
+  if (!hasAnyAd) {
+    document.getElementById("ad-banner").style.display = "none";
+    return;
+  }
+
+  // Render the 4 boxes
+  for (let i = 1; i <= 4; i++) {
+    const box  = document.getElementById(`ad-box-${i}`);
+    const ad   = byPosition[i];
+    if (ad) {
+      box.innerHTML = `
+        <a href="${escapeHtml(ad.linkUrl || "#")}" target="_blank" rel="noopener noreferrer">
+          <img src="${escapeHtml(ad.imageUrl || "")}" alt="${escapeHtml(ad.altText || "Advertisement")}" />
+        </a>
+      `;
+    } else {
+      box.innerHTML = `<span class="ad-placeholder">Ad Space Available</span>`;
+    }
+  }
+
   document.getElementById("ad-banner").style.display = "block";
 }
 
-function rotateAd(index) {
-  const img = document.getElementById("ad-image");
-  img.classList.add("fade-out");
-  setTimeout(() => {
-    displayAd(index);
-    img.classList.remove("fade-out");
-  }, 500);
-}
-
 function closeAdBanner() {
-  adBannerClosed = true;
+  adGridClosed = true;
   document.getElementById("ad-banner").style.display = "none";
-  if (adRotationTimer) {
-    clearInterval(adRotationTimer);
-    adRotationTimer = null;
+  if (adRefreshTimer) {
+    clearInterval(adRefreshTimer);
+    adRefreshTimer = null;
   }
 }
 
-/** Console helper: addAd("https://example.com/banner.jpg", "https://example.com", "Visit our store!") */
-window.addAd = async function(imageUrl, linkUrl, altText) {
+/** Console helper: addAd("https://image-url.jpg", "https://link.com", "Description", 1) */
+window.addAd = async function(imageUrl, linkUrl, altText, position) {
   if (!IS_CONFIGURED) { console.error("❌ Firebase is not configured."); return; }
+  const pos = parseInt(position, 10);
+  if (isNaN(pos) || pos < 1 || pos > 4) {
+    console.error("❌ position must be 1–4");
+    return;
+  }
   try {
     const docRef = await db.collection("ads").add({
       imageUrl,
       linkUrl,
       altText:   altText || "",
+      position:  pos,
       active:    true,
       createdAt: firebase.firestore.FieldValue.serverTimestamp()
     });

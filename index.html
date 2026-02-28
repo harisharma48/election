@@ -464,46 +464,193 @@
       font-style: italic;
     }
 
-    /* ── Ad Banner ────────────────────────────────────────────── */
+    /* ── Party Win Poll ───────────────────────────────────────── */
+    #party-poll-modal-overlay {
+      display: none;
+      position: fixed;
+      inset: 0;
+      background: rgba(0,0,0,.5);
+      z-index: 1000;
+      align-items: center;
+      justify-content: center;
+      padding: 16px;
+    }
+    #party-poll-modal-overlay.open { display: flex; }
+    #party-poll-modal {
+      background: #fff;
+      border-radius: 12px;
+      padding: 28px 32px;
+      width: 100%;
+      max-width: 460px;
+      max-height: 90vh;
+      overflow-y: auto;
+      box-shadow: 0 16px 48px rgba(0,0,0,.3);
+    }
+    #party-poll-modal h3 {
+      font-size: 1.1rem;
+      color: #1a237e;
+      margin-bottom: 6px;
+    }
+    .party-poll-option {
+      margin-bottom: 10px;
+    }
+    .party-poll-option label {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      font-size: 0.95rem;
+      cursor: pointer;
+    }
+    #party-poll-results {
+      margin-top: 24px;
+      padding-top: 20px;
+      border-top: 2px solid #e8eaf6;
+      display: none;
+    }
+    #party-poll-results h3 {
+      font-size: 1rem;
+      color: #1a237e;
+      margin-bottom: 14px;
+    }
+    #party-poll-results h3 small {
+      font-weight: 400;
+      color: #888;
+      font-size: 0.82rem;
+    }
+    .party-poll-bar-row {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      margin-bottom: 10px;
+    }
+    .party-poll-bar-label {
+      width: 160px;
+      font-size: 0.88rem;
+      color: #333;
+      flex-shrink: 0;
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+    }
+    .party-poll-bar-wrap {
+      flex: 1;
+      background: #e8eaf6;
+      border-radius: 4px;
+      height: 14px;
+    }
+    .party-poll-bar {
+      height: 14px;
+      border-radius: 4px;
+      background: linear-gradient(90deg, #1a237e, #3949ab);
+      transition: width .5s ease;
+      min-width: 2px;
+    }
+    .party-poll-bar-pct {
+      font-size: 0.85rem;
+      font-weight: 700;
+      color: #1a237e;
+      white-space: nowrap;
+      width: 80px;
+      text-align: right;
+    }
+    .party-poll-bar-pct span {
+      font-weight: 400;
+      color: #888;
+    }
+
+    /* ── Ad Banner (4-box grid) ───────────────────────────────── */
     #ad-banner {
       display: none;
       max-width: 960px;
       margin: 0 auto 24px;
       padding: 0 16px;
     }
-    .ad-banner-inner {
-      position: relative;
+    .ad-grid-inner {
+      background: #fff;
       border-radius: 12px;
       overflow: hidden;
       box-shadow: 0 4px 20px rgba(0,0,0,.2);
       border: 1px solid rgba(255,255,255,.15);
     }
-    .ad-banner-inner a img {
-      width: 100%;
-      height: auto;
-      display: block;
-      transition: opacity .5s ease;
+    .ad-grid-header {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      padding: 10px 16px;
+      background: #f5f5f5;
+      border-bottom: 2px solid #222;
+    }
+    .ad-grid-title {
+      font-size: 0.82rem;
+      font-weight: 700;
+      color: #555;
+      letter-spacing: .5px;
     }
     .ad-close-btn {
-      position: absolute;
-      top: 8px;
-      right: 8px;
-      width: 28px;
-      height: 28px;
+      width: 26px;
+      height: 26px;
       border-radius: 50%;
-      background: rgba(0,0,0,.5);
-      color: #fff;
+      background: rgba(0,0,0,.15);
+      color: #555;
       border: none;
-      font-size: 0.9rem;
+      font-size: 0.85rem;
       cursor: pointer;
       display: flex;
       align-items: center;
       justify-content: center;
-      z-index: 1;
       line-height: 1;
     }
-    .ad-close-btn:hover { background: rgba(0,0,0,.75); }
-    .ad-banner-inner img.fade-out { opacity: 0; }
+    .ad-close-btn:hover { background: rgba(0,0,0,.3); color: #fff; }
+    .ad-refresh-indicator {
+      font-size: 0.75rem;
+      color: #aaa;
+      opacity: 0;
+      transition: opacity .4s;
+      margin-left: 8px;
+    }
+    .ad-grid {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      grid-template-rows: auto auto;
+    }
+    .ad-box {
+      position: relative;
+      min-height: 140px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      overflow: hidden;
+      border: 2px solid #222;
+    }
+    .ad-box:nth-child(1) { border-top: none; border-left: none; }
+    .ad-box:nth-child(2) { border-top: none; border-right: none; }
+    .ad-box:nth-child(3) { border-bottom: none; border-left: none; }
+    .ad-box:nth-child(4) { border-bottom: none; border-right: none; }
+    .ad-box a {
+      display: block;
+      width: 100%;
+      height: 100%;
+    }
+    .ad-box a img {
+      width: 100%;
+      height: 100%;
+      object-fit: cover;
+      display: block;
+    }
+    .ad-placeholder {
+      color: #bbb;
+      font-size: 0.85rem;
+      text-align: center;
+      padding: 24px;
+    }
+    @media (max-width: 600px) {
+      .ad-grid { grid-template-columns: 1fr; }
+      .ad-box { min-height: 120px; border-left: none !important; border-right: none !important; }
+      .ad-box:nth-child(1) { border-top: none; border-bottom: 2px solid #222; }
+      .ad-box:nth-child(2) { border-top: none; border-bottom: 2px solid #222; }
+      .ad-box:nth-child(3) { border-bottom: 2px solid #222; }
+      .ad-box:nth-child(4) { border-bottom: none; }
+    }
   </style>
 </head>
 <body>
@@ -589,9 +736,13 @@
     </div>
 
     <!-- Predict Votes button -->
-    <div id="predict-btn-wrap" style="margin-top:16px;display:none;">
+    <div id="predict-btn-wrap" style="margin-top:16px;display:none;gap:10px;flex-wrap:wrap;">
       <button class="btn btn-primary" onclick="openPredictionModal()">🔮 Predict Votes</button>
+      <button class="btn btn-primary" onclick="openPartyPollModal()">🗳️ Predict Winner Party</button>
     </div>
+
+    <!-- Party Poll Results -->
+    <div id="party-poll-results"></div>
 
     <!-- Prediction Winners -->
     <div id="prediction-winners-section" style="display:none;">
@@ -622,13 +773,22 @@
 
 </div><!-- /.container -->
 
-<!-- Ad Banner -->
+<!-- Ad Banner (4-box grid) -->
 <div id="ad-banner">
-  <div class="ad-banner-inner">
-    <button class="ad-close-btn" onclick="closeAdBanner()" title="Close">✕</button>
-    <a id="ad-link" href="#" target="_blank" rel="noopener noreferrer">
-      <img id="ad-image" src="" alt="Advertisement" />
-    </a>
+  <div class="ad-grid-inner">
+    <div class="ad-grid-header">
+      <span class="ad-grid-title">📢 Sponsored</span>
+      <div style="display:flex;align-items:center;">
+        <span id="ad-refresh-indicator" class="ad-refresh-indicator">↻ refreshed</span>
+        <button class="ad-close-btn" onclick="closeAdBanner()" title="Close">✕</button>
+      </div>
+    </div>
+    <div class="ad-grid" id="ad-grid">
+      <div class="ad-box" id="ad-box-1"><span class="ad-placeholder">Ad Space Available</span></div>
+      <div class="ad-box" id="ad-box-2"><span class="ad-placeholder">Ad Space Available</span></div>
+      <div class="ad-box" id="ad-box-3"><span class="ad-placeholder">Ad Space Available</span></div>
+      <div class="ad-box" id="ad-box-4"><span class="ad-placeholder">Ad Space Available</span></div>
+    </div>
   </div>
 </div>
 
@@ -654,6 +814,25 @@
     <div class="modal-actions">
       <button class="btn" onclick="closePredictionModal()" style="background:#e8eaf6;color:#555;">Cancel</button>
       <button class="btn btn-primary" onclick="submitPrediction()">Submit Prediction</button>
+    </div>
+  </div>
+</div>
+
+<!-- Party Poll Modal -->
+<div id="party-poll-modal-overlay" onclick="handlePartyPollOverlayClick(event)">
+  <div id="party-poll-modal">
+    <h3>🗳️ Predict Winner Party</h3>
+    <p class="prediction-deadline">Poll closes on <strong>March 5, 2026</strong></p>
+    <div id="party-poll-options"></div>
+    <div class="prediction-user-fields">
+      <div class="form-group">
+        <label for="party-poll-name">Your Name</label>
+        <input type="text" id="party-poll-name" placeholder="Enter your name" />
+      </div>
+    </div>
+    <div class="modal-actions">
+      <button class="btn" onclick="closePartyPollModal()" style="background:#e8eaf6;color:#555;">Cancel</button>
+      <button class="btn btn-primary" onclick="submitPartyPoll()">Submit Vote</button>
     </div>
   </div>
 </div>
