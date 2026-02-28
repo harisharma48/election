@@ -1,0 +1,476 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Nepal Federal Parliament Election - Vote Tracker</title>
+
+  <!-- Firebase App (the core Firebase SDK) -->
+  <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-app-compat.js"></script>
+  <!-- Firebase Firestore -->
+  <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-firestore-compat.js"></script>
+
+  <style>
+    /* ── Reset & base ─────────────────────────────────────────── */
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+    body {
+      font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+      background: linear-gradient(135deg, #1a237e 0%, #283593 40%, #1565c0 100%);
+      min-height: 100vh;
+      color: #333;
+    }
+
+    /* ── Header ──────────────────────────────────────────────── */
+    header {
+      background: rgba(255, 255, 255, 0.08);
+      backdrop-filter: blur(10px);
+      border-bottom: 1px solid rgba(255, 255, 255, 0.15);
+      padding: 18px 24px;
+      text-align: center;
+    }
+    header h1 {
+      color: #fff;
+      font-size: 1.8rem;
+      font-weight: 700;
+      letter-spacing: 1px;
+      text-shadow: 0 2px 4px rgba(0,0,0,.4);
+    }
+    header p {
+      color: rgba(255,255,255,.75);
+      font-size: 0.9rem;
+      margin-top: 4px;
+    }
+
+    /* ── Status bar ──────────────────────────────────────────── */
+    #status-bar {
+      display: flex;
+      align-items: center;
+      justify-content: flex-end;
+      gap: 8px;
+      padding: 6px 24px;
+      background: rgba(0,0,0,.15);
+    }
+    #connection-dot {
+      width: 10px;
+      height: 10px;
+      border-radius: 50%;
+      background: #4caf50;
+      transition: background .3s;
+    }
+    #connection-dot.offline { background: #f44336; }
+    #connection-label {
+      color: rgba(255,255,255,.85);
+      font-size: 0.8rem;
+    }
+
+    /* ── Toast notification ──────────────────────────────────── */
+    #toast {
+      position: fixed;
+      bottom: 24px;
+      right: 24px;
+      background: #323232;
+      color: #fff;
+      padding: 12px 20px;
+      border-radius: 8px;
+      font-size: 0.9rem;
+      box-shadow: 0 4px 12px rgba(0,0,0,.3);
+      opacity: 0;
+      transform: translateY(20px);
+      transition: opacity .3s, transform .3s;
+      z-index: 9999;
+      max-width: 320px;
+    }
+    #toast.show { opacity: 1; transform: translateY(0); }
+    #toast.success { border-left: 4px solid #4caf50; }
+    #toast.error   { border-left: 4px solid #f44336; }
+    #toast.info    { border-left: 4px solid #2196f3; }
+
+    /* ── Main container ──────────────────────────────────────── */
+    .container {
+      max-width: 960px;
+      margin: 32px auto;
+      padding: 0 16px 64px;
+    }
+
+    /* ── Card ────────────────────────────────────────────────── */
+    .card {
+      background: #fff;
+      border-radius: 12px;
+      box-shadow: 0 8px 32px rgba(0,0,0,.2);
+      padding: 28px 32px;
+      margin-bottom: 24px;
+    }
+    .card h2 {
+      font-size: 1.1rem;
+      color: #1a237e;
+      margin-bottom: 20px;
+      padding-bottom: 10px;
+      border-bottom: 2px solid #e8eaf6;
+      display: flex;
+      align-items: center;
+      gap: 8px;
+    }
+
+    /* ── Search form ─────────────────────────────────────────── */
+    .search-grid {
+      display: grid;
+      grid-template-columns: 1fr 1fr 1fr auto;
+      gap: 16px;
+      align-items: end;
+    }
+    @media (max-width: 680px) {
+      .search-grid { grid-template-columns: 1fr; }
+    }
+
+    .form-group label {
+      display: block;
+      font-size: 0.82rem;
+      font-weight: 600;
+      color: #555;
+      margin-bottom: 6px;
+      text-transform: uppercase;
+      letter-spacing: .4px;
+    }
+    .form-group select {
+      width: 100%;
+      padding: 10px 12px;
+      border: 1.5px solid #c5cae9;
+      border-radius: 8px;
+      font-size: 0.95rem;
+      background: #fafafa;
+      color: #333;
+      appearance: none;
+      background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='8' viewBox='0 0 12 8'%3E%3Cpath d='M1 1l5 5 5-5' stroke='%231a237e' stroke-width='1.8' fill='none' stroke-linecap='round'/%3E%3C/svg%3E");
+      background-repeat: no-repeat;
+      background-position: right 12px center;
+      cursor: pointer;
+      transition: border-color .2s, box-shadow .2s;
+    }
+    .form-group select:focus {
+      outline: none;
+      border-color: #3949ab;
+      box-shadow: 0 0 0 3px rgba(57,73,171,.15);
+    }
+    .form-group select:disabled { opacity: .5; cursor: not-allowed; }
+
+    /* ── Buttons ─────────────────────────────────────────────── */
+    .btn {
+      padding: 10px 22px;
+      border: none;
+      border-radius: 8px;
+      font-size: 0.95rem;
+      font-weight: 600;
+      cursor: pointer;
+      transition: all .2s;
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+    }
+    .btn:disabled { opacity: .5; cursor: not-allowed; }
+    .btn-primary {
+      background: linear-gradient(135deg, #1a237e, #3949ab);
+      color: #fff;
+    }
+    .btn-primary:hover:not(:disabled) {
+      background: linear-gradient(135deg, #283593, #3f51b5);
+      transform: translateY(-1px);
+      box-shadow: 0 4px 12px rgba(26,35,126,.35);
+    }
+    .btn-success {
+      background: linear-gradient(135deg, #388e3c, #43a047);
+      color: #fff;
+    }
+    .btn-success:hover:not(:disabled) {
+      background: linear-gradient(135deg, #2e7d32, #388e3c);
+      transform: translateY(-1px);
+    }
+    .btn-warning {
+      background: linear-gradient(135deg, #e65100, #f57c00);
+      color: #fff;
+      font-size: 0.82rem;
+      padding: 6px 14px;
+    }
+    .btn-warning:hover:not(:disabled) {
+      background: linear-gradient(135deg, #bf360c, #e65100);
+    }
+    .btn-sm { font-size: 0.82rem; padding: 6px 12px; }
+
+    /* ── Results section ─────────────────────────────────────── */
+    #results-section { display: none; }
+
+    #results-title {
+      font-size: 1rem;
+      font-weight: 700;
+      color: #1a237e;
+    }
+
+    /* ── Table ───────────────────────────────────────────────── */
+    .table-wrap { overflow-x: auto; margin-top: 16px; }
+    table {
+      width: 100%;
+      border-collapse: collapse;
+      font-size: 0.93rem;
+    }
+    thead tr {
+      background: linear-gradient(135deg, #1a237e, #3949ab);
+      color: #fff;
+    }
+    thead th {
+      padding: 12px 16px;
+      text-align: left;
+      font-weight: 600;
+      white-space: nowrap;
+    }
+    tbody tr { border-bottom: 1px solid #e8eaf6; }
+    tbody tr:hover { background: #f5f5ff; }
+    tbody td {
+      padding: 11px 16px;
+      vertical-align: middle;
+    }
+    .rank-badge {
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      width: 28px;
+      height: 28px;
+      border-radius: 50%;
+      font-weight: 700;
+      font-size: 0.85rem;
+    }
+    .rank-1 { background: #ffd700; color: #5d4037; }
+    .rank-2 { background: #c0c0c0; color: #37474f; }
+    .rank-3 { background: #cd7f32; color: #fff; }
+    .rank-other { background: #e8eaf6; color: #555; }
+
+    .vote-count {
+      font-weight: 700;
+      color: #1a237e;
+      font-size: 1rem;
+    }
+
+    .progress-bar-wrap {
+      background: #e8eaf6;
+      border-radius: 4px;
+      height: 6px;
+      min-width: 80px;
+      margin-top: 4px;
+    }
+    .progress-bar {
+      height: 6px;
+      border-radius: 4px;
+      background: linear-gradient(90deg, #1a237e, #3949ab);
+      transition: width .5s ease;
+    }
+
+    .no-data {
+      text-align: center;
+      padding: 40px 20px;
+      color: #888;
+      font-style: italic;
+    }
+
+    /* ── Loading spinner ─────────────────────────────────────── */
+    .spinner {
+      display: inline-block;
+      width: 20px;
+      height: 20px;
+      border: 3px solid rgba(26,35,126,.2);
+      border-top-color: #3949ab;
+      border-radius: 50%;
+      animation: spin .7s linear infinite;
+    }
+    @keyframes spin { to { transform: rotate(360deg); } }
+
+    #loading-row td {
+      text-align: center;
+      padding: 32px;
+      color: #666;
+    }
+
+    /* ── Add candidate form ──────────────────────────────────── */
+    #add-section { display: none; }
+
+    .add-grid {
+      display: grid;
+      grid-template-columns: 1fr 1fr auto;
+      gap: 16px;
+      align-items: end;
+    }
+    @media (max-width: 600px) {
+      .add-grid { grid-template-columns: 1fr; }
+    }
+
+    .form-group input[type="text"],
+    .form-group input[type="number"] {
+      width: 100%;
+      padding: 10px 12px;
+      border: 1.5px solid #c5cae9;
+      border-radius: 8px;
+      font-size: 0.95rem;
+      background: #fafafa;
+      color: #333;
+      transition: border-color .2s, box-shadow .2s;
+    }
+    .form-group input:focus {
+      outline: none;
+      border-color: #3949ab;
+      box-shadow: 0 0 0 3px rgba(57,73,171,.15);
+    }
+
+    /* ── Firebase config warning ─────────────────────────────── */
+    #config-warning {
+      display: none;
+      background: #fff3e0;
+      border: 1.5px solid #ffb300;
+      border-radius: 10px;
+      padding: 18px 22px;
+      margin-bottom: 24px;
+    }
+    #config-warning h3 {
+      color: #e65100;
+      font-size: 1rem;
+      margin-bottom: 8px;
+      display: flex;
+      align-items: center;
+      gap: 6px;
+    }
+    #config-warning p {
+      color: #795548;
+      font-size: 0.9rem;
+      line-height: 1.55;
+    }
+    #config-warning code {
+      background: #ffe0b2;
+      padding: 2px 6px;
+      border-radius: 4px;
+      font-family: monospace;
+    }
+
+    /* ── Summary bar ─────────────────────────────────────────── */
+    #summary-bar {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 16px;
+      margin-bottom: 16px;
+    }
+    .summary-item {
+      background: #e8eaf6;
+      border-radius: 8px;
+      padding: 8px 16px;
+      font-size: 0.88rem;
+    }
+    .summary-item span { font-weight: 700; color: #1a237e; }
+  </style>
+</head>
+<body>
+
+<header>
+  <h1>🗳️ Nepal Federal Parliament Election</h1>
+  <p>Real-time Vote Tracking System — Pratinidhi Sabha</p>
+</header>
+
+<div id="status-bar">
+  <div id="connection-dot"></div>
+  <span id="connection-label">Online</span>
+</div>
+
+<!-- Firebase config warning (shown when placeholder credentials are detected) -->
+<div id="config-warning">
+  <h3>⚠️ Firebase Not Configured</h3>
+  <p>
+    You are using placeholder Firebase credentials. Open <code>script.js</code> and replace the
+    <code>firebaseConfig</code> values with your own Firebase project credentials.<br/>
+    See <strong>README.md</strong> for step-by-step setup instructions.
+  </p>
+</div>
+
+<div class="container">
+
+  <!-- Search card -->
+  <div class="card">
+    <h2>🔍 Search Constituency</h2>
+    <div class="search-grid">
+      <div class="form-group">
+        <label for="province-select">Province</label>
+        <select id="province-select">
+          <option value="">-- Select Province --</option>
+        </select>
+      </div>
+      <div class="form-group">
+        <label for="district-select">District</label>
+        <select id="district-select" disabled>
+          <option value="">-- Select District --</option>
+        </select>
+      </div>
+      <div class="form-group">
+        <label for="constituency-select">Constituency No.</label>
+        <select id="constituency-select" disabled>
+          <option value="">-- Select Constituency --</option>
+        </select>
+      </div>
+      <div>
+        <button class="btn btn-primary" id="search-btn" onclick="searchConstituency()" disabled>
+          🔍 Search
+        </button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Results card -->
+  <div class="card" id="results-section">
+    <h2>
+      <span>📊</span>
+      <span id="results-title">Candidate Results</span>
+      <span id="live-badge" style="margin-left:auto;font-size:.75rem;background:#e8f5e9;color:#2e7d32;padding:3px 10px;border-radius:20px;font-weight:600;">● LIVE</span>
+    </h2>
+
+    <div id="summary-bar"></div>
+
+    <div class="table-wrap">
+      <table id="candidates-table">
+        <thead>
+          <tr>
+            <th>#</th>
+            <th>Candidate Name</th>
+            <th>Party</th>
+            <th>Votes</th>
+            <th>Share</th>
+            <th>Action</th>
+          </tr>
+        </thead>
+        <tbody id="candidates-tbody">
+          <tr class="no-data"><td colspan="6">Select a constituency and click Search.</td></tr>
+        </tbody>
+      </table>
+    </div>
+  </div>
+
+  <!-- Add candidate card -->
+  <div class="card" id="add-section">
+    <h2>➕ Add New Candidate</h2>
+    <div class="add-grid">
+      <div class="form-group">
+        <label for="new-name">Candidate Name</label>
+        <input type="text" id="new-name" placeholder="e.g., Ram Sharma" />
+      </div>
+      <div class="form-group">
+        <label for="new-party">Party</label>
+        <input type="text" id="new-party" placeholder="e.g., Nepal Congress" />
+      </div>
+      <div>
+        <button class="btn btn-success" onclick="addCandidate()">
+          ➕ Add
+        </button>
+      </div>
+    </div>
+  </div>
+
+</div><!-- /.container -->
+
+<!-- Toast -->
+<div id="toast"></div>
+
+<script src="script.js"></script>
+</body>
+</html>
